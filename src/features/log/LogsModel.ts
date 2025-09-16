@@ -79,6 +79,7 @@ export function queryLogsVolume<TQuery extends DataQuery, TOptions extends DataS
         observer.complete();
       },
       next: (dataQueryResponse: DataQueryResponse) => {
+        console.log('dataQueryResponse', dataQueryResponse);
         const { errors } = dataQueryResponse;
         if (errors !== undefined) {
           observer.next({

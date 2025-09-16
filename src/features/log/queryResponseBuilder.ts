@@ -14,9 +14,6 @@ export const getLogsDataFrame = (
   const logsData = getDefaultDataFrame(target.refId, 'logs');
 
   logsData.addField({
-    config: {
-      filterable: true,
-    },
     name: 'Time',
     type: FieldType.time,
   });
@@ -39,12 +36,7 @@ export const getLogsDataFrame = (
   return logsData;
 };
 
-export const getGraphDataFrame = (
-  data: any,
-  target: MyQuery,
-  app: string,
-  timestampColumn = '_timestamp'
-) => {
+export const getGraphDataFrame = (data: any, target: MyQuery, app: string, timestampColumn = '_timestamp') => {
   const graphData = getDefaultDataFrame(target.refId, 'graph');
 
   let fields = ['zo_sql_key', 'zo_sql_num'];
@@ -69,6 +61,7 @@ export const getGraphDataFrame = (
     } else {
       graphData.addField({
         name: fields[i],
+        type: FieldType.number,
       });
     }
   }
@@ -78,7 +71,7 @@ export const getGraphDataFrame = (
   }
 
   data.forEach((log: any) => {
-    graphData.add(getField(log, fields, timestampColumn));
+    graphData.add(getField(log, fields, 'zo_sql_key'));
   });
 
   return graphData;
@@ -89,16 +82,17 @@ const getField = (log: any, columns: any, timestampColumn: string) => {
 
   for (let i = 0; i < columns.length; i++) {
     let col_name = columns[i];
-    let col_value = log[col_name]
+    let col_value = log[col_name];
     if (isTimeField(col_name, timestampColumn)) {
       // We have to convert microseconds if we receive them
       // 500 billion / year 17814 is probably a good threshold for milliseconds
+
       if (col_value > 500_000_000_000) {
         col_value = convertTimeToMs(col_value);
-        field["Time"] = col_value;
+        field['Time'] = col_value;
       } else {
         // Convert any other date fmt
-        field["Time"] = new Date(col_value).getTime();
+        field['Time'] = new Date(col_value + 'Z').getTime();
       }
     } else {
       field[col_name] = log[col_name];
