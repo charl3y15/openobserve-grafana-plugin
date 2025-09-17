@@ -28,7 +28,8 @@ export class DataSource
   instanceSettings?: DataSourceInstanceSettings<MyDataSourceOptions>;
   url: string;
   streamFields: any[];
-  cachedQuery: CachedQuery;
+  cachedLogsQuery: CachedQuery;
+  cachedHistogramQuery: CachedQuery;
   timestampColumn: string;
   histogramQuery: any;
 
@@ -37,7 +38,13 @@ export class DataSource
     this.url = instanceSettings.url || '';
     this.instanceSettings = instanceSettings;
     this.streamFields = [];
-    this.cachedQuery = {
+    this.cachedLogsQuery = {
+      requestQuery: '',
+      isFetching: false,
+      data: null,
+      promise: null,
+    };
+    this.cachedHistogramQuery = {
       requestQuery: '',
       isFetching: false,
       data: null,
@@ -65,14 +72,8 @@ export class DataSource
     // console.log("options", options);
 
     const promises = interpolatedTargets.map((target) => {
-      if (!this.cachedQuery.data) {
-        this.cachedQuery.data = new Promise((resolve, reject) => {
-          this.cachedQuery.promise = {
-            resolve,
-            reject,
-          };
-        });
-      }
+      const isHistogramQuery = target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME);
+      let currentCache = isHistogramQuery ? this.cachedHistogramQuery : this.cachedLogsQuery;
 
       let reqData = buildQuery(target, timestamps, this.streamFields, options.app, this.timestampColumn);
 
@@ -93,46 +94,58 @@ export class DataSource
       });
 
       console.log('cacheKey', cacheKey);
-      console.log('cached request query', this.cachedQuery);
-      console.log('Is same', this.cachedQuery.requestQuery === cacheKey);
-      if (cacheKey === this.cachedQuery.requestQuery) {
-        return this.cachedQuery.data
+      console.log('cached request query', currentCache);
+      console.log('Is same', currentCache.requestQuery === cacheKey);
+      if (cacheKey === currentCache.requestQuery && currentCache.data) {
+        return currentCache.data
           ?.then((res) => {
             console.log('res in cache', target, res);
             const mode = target.displayMode || 'auto';
             // console.log('mode', mode);
             // console.log('res in cache', res);
             if (target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)) {
-              return res.graph;
+              return res;
             }
             if (options.app === 'panel-editor' || options.app === 'dashboard') {
               if (mode === 'graph' || mode === 'auto') {
-                return res.graph;
+                return res;
               }
             }
-            return res.logs;
-          })
-          .finally(() => {
-            this.resetQueryCache();
+            return res;
           });
+      } else {
+        if(target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)){
+          this.resetHistogramQueryCache();
+        } else {
+          this.resetLogsQueryCache();
+        }
+
+        currentCache = isHistogramQuery ? this.cachedHistogramQuery : this.cachedLogsQuery;
+
+        currentCache.data = new Promise((resolve, reject) => {
+          currentCache.promise = {
+            resolve,
+            reject,
+          };
+        });
       }
 
-      // As we don't show histogram for sql mode in explore
-      if (options.app === 'explore' && target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME) && target.sqlMode) {
-        return getGraphDataFrame([], target, options.app, this.timestampColumn);
-      }
-
-      this.cachedQuery.requestQuery = cacheKey;
-      this.cachedQuery.isFetching = true;
+      currentCache.requestQuery = cacheKey;
+      currentCache.isFetching = true;
       return this.doRequest(target, reqData)
         .then((response) => {
-          // if (options.app === 'panel-editor' || options.app === 'dashboard') {
-          //   const mode = target.displayMode || 'auto';
-          //   const logsDf = getLogsDataFrame(response.hits, target, this.streamFields, this.timestampColumn);
-          //   const graphDf = getGraphDataFrame(response.hits, target, options.app, this.timestampColumn);
-          //   this.cachedQuery.promise?.resolve({ graph: graphDf, logs: logsDf });
-          //   return mode === 'logs' ? logsDf : graphDf;
-          // }
+          if (options.app === 'panel-editor' || options.app === 'dashboard') {
+            const mode = target.displayMode || 'auto';
+            if(mode === 'graph'){
+              const graphDf = getGraphDataFrame(response.hits, target, options.app, this.timestampColumn);
+              currentCache.promise?.resolve(graphDf);
+              return graphDf;
+            } else {
+              const logsDf = getLogsDataFrame(response.hits, target, this.streamFields, this.timestampColumn);
+              currentCache.promise?.resolve(logsDf);
+              return logsDf;
+            }
+          }
 
           // Handle histogram queries for log volume using partitions
           if (target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME) && this.histogramQuery) {
@@ -145,7 +158,9 @@ export class DataSource
                   const partitions = partitionResponse.partitions;
 
                   if (!partitionResponse.is_histogram_eligible) {
-                    return null;
+                    let dataFrame = getGraphDataFrame([], target, options.app, this.timestampColumn);
+                    currentCache.promise?.resolve(dataFrame);
+                    return dataFrame;
                   }
 
                   const histogramPromises = partitions.map((partition: any) => {
@@ -171,7 +186,7 @@ export class DataSource
                     }, []);
 
                     const graphDataFrame = getGraphDataFrame(combinedHits, target, options.app, 'zo_sql_key');
-                    this.cachedQuery.promise?.resolve({ graph: graphDataFrame, logs: null });
+                    currentCache.promise?.resolve(graphDataFrame);
 
                     return graphDataFrame;
                   });
@@ -184,7 +199,7 @@ export class DataSource
                       options.app,
                       this.timestampColumn
                     );
-                    this.cachedQuery.promise?.resolve({ graph: graphDataFrame, logs: null });
+                    currentCache.promise?.resolve(graphDataFrame);
                     return graphDataFrame;
                   });
                 }
@@ -193,21 +208,21 @@ export class DataSource
                 console.error('Partition or histogram request failed:', error);
                 // Fallback to empty graph
                 const graphDataFrame = getGraphDataFrame([], target, options.app, this.timestampColumn);
-                this.cachedQuery.promise?.resolve({ graph: graphDataFrame, logs: null });
+                currentCache.promise?.resolve(graphDataFrame);
                 return graphDataFrame;
               });
           } else if (target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)) {
             const graphDataFrame = getGraphDataFrame([], target, options.app, this.timestampColumn);
-            this.cachedQuery.promise?.resolve({ graph: graphDataFrame, logs: null });
+            currentCache.promise?.resolve(graphDataFrame);
             return graphDataFrame;
           } else {
             const logsDataFrame = getLogsDataFrame(response.hits, target, this.streamFields, this.timestampColumn);
-            this.cachedQuery.promise?.resolve({ graph: null, logs: logsDataFrame });
+            currentCache.promise?.resolve(logsDataFrame);
             return logsDataFrame;
           }
         })
         .catch((err) => {
-          this.cachedQuery.promise?.reject(err);
+          currentCache.promise?.reject(err);
           let error = {
             message: '',
             detail: '',
@@ -226,7 +241,7 @@ export class DataSource
           throw new Error(error.message + (error.detail ? ` ( ${error.detail} ) ` : ''));
         })
         .finally(() => {
-          this.cachedQuery.isFetching = false;
+          currentCache.isFetching = false;
         });
     });
 
@@ -275,8 +290,17 @@ export class DataSource
     });
   }
 
-  resetQueryCache() {
-    this.cachedQuery = {
+  resetHistogramQueryCache() {
+    this.cachedHistogramQuery = {
+      requestQuery: '',
+      isFetching: false,
+      data: null,
+      promise: null,
+    };
+  }
+
+  resetLogsQueryCache() {
+    this.cachedLogsQuery = {
       requestQuery: '',
       isFetching: false,
       data: null,
