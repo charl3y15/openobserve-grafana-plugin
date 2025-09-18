@@ -132,94 +132,105 @@ export class DataSource
 
       currentCache.requestQuery = cacheKey;
       currentCache.isFetching = true;
-      return this.doRequest(target, reqData)
-        .then((response) => {
-          if (options.app === 'panel-editor' || options.app === 'dashboard') {
+
+      // For volume, panel-editor, or dashboard contexts, use partition + histogram flow
+      if (target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME) || options.app === 'panel-editor' || options.app === 'dashboard') {
+        if(reqData.query && reqData.query.hasOwnProperty('size')) {
+          delete reqData.query.size;
+        }
+        return this.doPartitionRequest(target, reqData.query)
+          .then((partitionResponse) => {
+            // Check if partitions are available
+            if (partitionResponse?.partitions?.length > 0) {
+              // Use partitions to make histogram requests
+              const partitions = partitionResponse.partitions;
+
+              if (!partitionResponse.is_histogram_eligible) {
+                const mode = target.displayMode || 'auto';
+                if(mode === 'graph' || target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)){
+                  let dataFrame = getGraphDataFrame([], target, options.app, "zo_sql_key");
+                  currentCache.promise?.resolve(dataFrame);
+                  return dataFrame;
+                } else {
+                  let dataFrame = getLogsDataFrame([], target, this.streamFields, this.timestampColumn);
+                  currentCache.promise?.resolve(dataFrame);
+                  return dataFrame;
+                }
+              }
+
+              const histogramPromises = partitions.map((partition: any) => {
+                // Create histogram query for each partition
+                const partitionHistogramQuery = {
+                  ...reqData,
+                  query: {
+                    ...reqData.query,
+                    start_time: partition[0],
+                    end_time: partition[1],
+                    histogram_interval: partitionResponse.histogram_interval,
+                  },
+                };
+
+                return this.doHistogramRequest(target, partitionHistogramQuery);
+              });
+
+              // Combine results from all partitions
+              return Promise.all(histogramPromises).then((histogramResponses) => {
+                // Merge histogram data from all partitions
+                const combinedHits = histogramResponses.reduce((acc, response) => {
+                  return acc.concat(response.hits || []);
+                }, []);
+
+                const mode = target.displayMode || 'auto';
+                console.log('combinedHits', combinedHits, target);
+                if((mode === 'graph' || mode === 'auto') || target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)){
+                  const graphDf = getGraphDataFrame(combinedHits, target, options.app, "zo_sql_key");
+                  currentCache.promise?.resolve(graphDf);
+                  console.log('graphDf', graphDf);
+                  return graphDf;
+                } else {
+                  const logsDf = getLogsDataFrame(combinedHits, target, this.streamFields, this.timestampColumn);
+                  currentCache.promise?.resolve(logsDf);
+                  return logsDf;
+                }
+              });
+            } else {
+              // Fallback to direct histogram request if no partitions
+              return this.doHistogramRequest(target, reqData).then((histogramResponse) => {
+                const mode = target.displayMode || 'auto';
+                if(mode === 'graph' || target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)){
+                  const graphDf = getGraphDataFrame(histogramResponse.hits, target, options.app, this.timestampColumn);
+                  currentCache.promise?.resolve(graphDf);
+                  return graphDf;
+                } else {
+                  const logsDf = getLogsDataFrame(histogramResponse.hits, target, this.streamFields, this.timestampColumn);
+                  currentCache.promise?.resolve(logsDf);
+                  return logsDf;
+                }
+              });
+            }
+          })
+          .catch((error) => {
+            console.error('Partition or histogram request failed:', error);
+            // Fallback to empty data
             const mode = target.displayMode || 'auto';
-            if(mode === 'graph'){
-              const graphDf = getGraphDataFrame(response.hits, target, options.app, this.timestampColumn);
+            if(mode === 'graph' || target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)){
+              const graphDf = getGraphDataFrame([], target, options.app, this.timestampColumn);
               currentCache.promise?.resolve(graphDf);
               return graphDf;
             } else {
-              const logsDf = getLogsDataFrame(response.hits, target, this.streamFields, this.timestampColumn);
+              const logsDf = getLogsDataFrame([], target, this.streamFields, this.timestampColumn);
               currentCache.promise?.resolve(logsDf);
               return logsDf;
             }
-          }
+          });
+      }
 
-          // Handle histogram queries for log volume using partitions
-          if (target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME) && this.histogramQuery) {
-            // First, get partition information for histogram queries
-            return this.doPartitionRequest(target, this.histogramQuery.query)
-              .then((partitionResponse) => {
-                // Check if partitions are available
-                if (partitionResponse?.partitions?.length > 0) {
-                  // Use partitions to make histogram requests
-                  const partitions = partitionResponse.partitions;
-
-                  if (!partitionResponse.is_histogram_eligible) {
-                    let dataFrame = getGraphDataFrame([], target, options.app, this.timestampColumn);
-                    currentCache.promise?.resolve(dataFrame);
-                    return dataFrame;
-                  }
-
-                  const histogramPromises = partitions.map((partition: any) => {
-                    // Create histogram query for each partition
-                    const partitionHistogramQuery = {
-                      ...this.histogramQuery,
-                      query: {
-                        ...this.histogramQuery.query,
-                        start_time: partition[0],
-                        end_time: partition[1],
-                        histogram_interval: partitionResponse.histogram_interval,
-                      },
-                    };
-
-                    return this.doHistogramRequest(target, partitionHistogramQuery);
-                  });
-
-                  // Combine results from all partitions
-                  return Promise.all(histogramPromises).then((histogramResponses) => {
-                    // Merge histogram data from all partitions
-                    const combinedHits = histogramResponses.reduce((acc, response) => {
-                      return acc.concat(response.hits || []);
-                    }, []);
-
-                    const graphDataFrame = getGraphDataFrame(combinedHits, target, options.app, 'zo_sql_key');
-                    currentCache.promise?.resolve(graphDataFrame);
-
-                    return graphDataFrame;
-                  });
-                } else {
-                  // Fallback to direct histogram request if no partitions
-                  return this.doHistogramRequest(target, this.histogramQuery).then((histogramResponse) => {
-                    const graphDataFrame = getGraphDataFrame(
-                      histogramResponse.hits,
-                      target,
-                      options.app,
-                      this.timestampColumn
-                    );
-                    currentCache.promise?.resolve(graphDataFrame);
-                    return graphDataFrame;
-                  });
-                }
-              })
-              .catch((error) => {
-                console.error('Partition or histogram request failed:', error);
-                // Fallback to empty graph
-                const graphDataFrame = getGraphDataFrame([], target, options.app, this.timestampColumn);
-                currentCache.promise?.resolve(graphDataFrame);
-                return graphDataFrame;
-              });
-          } else if (target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)) {
-            const graphDataFrame = getGraphDataFrame([], target, options.app, this.timestampColumn);
-            currentCache.promise?.resolve(graphDataFrame);
-            return graphDataFrame;
-          } else {
-            const logsDataFrame = getLogsDataFrame(response.hits, target, this.streamFields, this.timestampColumn);
-            currentCache.promise?.resolve(logsDataFrame);
-            return logsDataFrame;
-          }
+      // For logs, continue using doRequest
+      return this.doRequest(target, reqData)
+        .then((response) => {
+          const logsDataFrame = getLogsDataFrame(response.hits, target, this.streamFields, this.timestampColumn);
+          currentCache.promise?.resolve(logsDataFrame);
+          return logsDataFrame;
         })
         .catch((err) => {
           currentCache.promise?.reject(err);

@@ -41,13 +41,13 @@ export const getGraphDataFrame = (data: any, target: MyQuery, app: string, times
 
   let fields = ['zo_sql_key', 'zo_sql_num'];
 
-  if (app !== 'explore') {
-    const columns = getColumnsFromQuery(target.query);
+  // if (app !== 'explore') {
+  //   const columns = getColumnsFromQuery(target.query);
 
-    if (columns.length) {
-      fields = columns;
-    }
-  }
+  //   if (columns.length) {
+  //     fields = columns;
+  //   }
+  // }
 
   for (let i = 0; i < fields.length; i++) {
     if (isTimeField(fields[i], timestampColumn)) {
