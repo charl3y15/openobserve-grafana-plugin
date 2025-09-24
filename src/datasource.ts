@@ -32,6 +32,7 @@ export class DataSource
   cachedHistogramQuery: CachedQuery;
   timestampColumn: string;
   histogramQuery: any;
+  histogramTimestampColumn: string;
 
   constructor(instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions>) {
     super(instanceSettings);
@@ -52,6 +53,7 @@ export class DataSource
     };
     this.timestampColumn = instanceSettings.jsonData.timestamp_column;
     this.histogramQuery = null;
+    this.histogramTimestampColumn = "zo_sql_key"; // In histogram query response, we get zo_sql_key as timestamp column by default. Changing this will break things.
   }
 
   applyTemplateVariables(query: MyQuery, scopedVars: any): MyQuery {
@@ -61,204 +63,56 @@ export class DataSource
     };
   }
 
+  /**
+   * Main query method that processes data queries for logs and histograms
+   * Handles caching, different query types (volume, dashboard, logs), and error scenarios
+   */
   async query(options: DataQueryRequest<MyQuery>): Promise<DataQueryResponse> {
     const timestamps = getConsumableTime(options.range);
-    // console.log('timestamps', timestamps);
-    // console.log('options', options);
     const interpolatedTargets = options.targets.map((target) => {
       return this.applyTemplateVariables(target, options.scopedVars);
     });
 
-    // console.log("options", options);
-
     const promises = interpolatedTargets.map((target) => {
-      const isHistogramQuery = target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME);
-      let currentCache = isHistogramQuery ? this.cachedHistogramQuery : this.cachedLogsQuery;
-
-      let reqData = buildQuery(target, timestamps, this.streamFields, options.app, this.timestampColumn);
-
-      // // If its a logs search query, we need to save the histogram query from the request
-      // // We store it in the histogramQuery variable and use it later for the graph query if the request is for a graph
-      if (!target.refId?.includes(REF_ID_STARTER_LOG_VOLUME)) {
-        this.histogramQuery = reqData;
-      } else if (target.refId?.includes(REF_ID_STARTER_LOG_VOLUME) && this.histogramQuery) {
-        reqData = this.histogramQuery;
-        reqData.query.sql_mode = 'context';
-        delete reqData.query.size;
-      }
-
-      const cacheKey = JSON.stringify({
-        reqData,
-        displayMode: target.displayMode ?? 'auto',
-        type: target.refId,
-      });
-
-      console.log('cacheKey', cacheKey);
-      console.log('cached request query', currentCache);
-      console.log('Is same', currentCache.requestQuery === cacheKey);
-      if (cacheKey === currentCache.requestQuery && currentCache.data) {
-        return currentCache.data
-          ?.then((res) => {
-            console.log('res in cache', target, res);
-            const mode = target.displayMode || 'auto';
-            // console.log('mode', mode);
-            // console.log('res in cache', res);
-            if (target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)) {
-              return res;
-            }
-            if (options.app === 'panel-editor' || options.app === 'dashboard') {
-              if (mode === 'graph' || mode === 'auto') {
-                return res;
-              }
-            }
-            return res;
-          });
-      } else {
-        if(target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)){
-          this.resetHistogramQueryCache();
-        } else {
-          this.resetLogsQueryCache();
-        }
-
-        currentCache = isHistogramQuery ? this.cachedHistogramQuery : this.cachedLogsQuery;
-
-        currentCache.data = new Promise((resolve, reject) => {
-          currentCache.promise = {
-            resolve,
-            reject,
-          };
-        });
-      }
-
-      currentCache.requestQuery = cacheKey;
-      currentCache.isFetching = true;
-
-      // For volume, panel-editor, or dashboard contexts, use partition + histogram flow
-      if (target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME) || options.app === 'panel-editor' || options.app === 'dashboard') {
-        if(reqData.query && reqData.query.hasOwnProperty('size')) {
-          delete reqData.query.size;
-        }
-        return this.doPartitionRequest(target, reqData.query)
-          .then((partitionResponse) => {
-            // Check if partitions are available
-            if (partitionResponse?.partitions?.length > 0) {
-              // Use partitions to make histogram requests
-              const partitions = partitionResponse.partitions;
-
-              if (!partitionResponse.is_histogram_eligible) {
-                const mode = target.displayMode || 'auto';
-                if(mode === 'graph' || target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)){
-                  let dataFrame = getGraphDataFrame([], target, options.app, "zo_sql_key");
-                  currentCache.promise?.resolve(dataFrame);
-                  return dataFrame;
-                } else {
-                  let dataFrame = getLogsDataFrame([], target, this.streamFields, this.timestampColumn);
-                  currentCache.promise?.resolve(dataFrame);
-                  return dataFrame;
-                }
-              }
-
-              const histogramPromises = partitions.map((partition: any) => {
-                // Create histogram query for each partition
-                const partitionHistogramQuery = {
-                  ...reqData,
-                  query: {
-                    ...reqData.query,
-                    start_time: partition[0],
-                    end_time: partition[1],
-                    histogram_interval: partitionResponse.histogram_interval,
-                  },
-                };
-
-                return this.doHistogramRequest(target, partitionHistogramQuery);
-              });
-
-              // Combine results from all partitions
-              return Promise.all(histogramPromises).then((histogramResponses) => {
-                // Merge histogram data from all partitions
-                const combinedHits = histogramResponses.reduce((acc, response) => {
-                  return acc.concat(response.hits || []);
-                }, []);
-
-                const mode = target.displayMode || 'auto';
-                console.log('combinedHits', combinedHits, target);
-                if((mode === 'graph' || mode === 'auto') || target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)){
-                  const graphDf = getGraphDataFrame(combinedHits, target, options.app, "zo_sql_key");
-                  currentCache.promise?.resolve(graphDf);
-                  console.log('graphDf', graphDf);
-                  return graphDf;
-                } else {
-                  const logsDf = getLogsDataFrame(combinedHits, target, this.streamFields, this.timestampColumn);
-                  currentCache.promise?.resolve(logsDf);
-                  return logsDf;
-                }
-              });
-            } else {
-              // Fallback to direct histogram request if no partitions
-              return this.doHistogramRequest(target, reqData).then((histogramResponse) => {
-                const mode = target.displayMode || 'auto';
-                if(mode === 'graph' || target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)){
-                  const graphDf = getGraphDataFrame(histogramResponse.hits, target, options.app, this.timestampColumn);
-                  currentCache.promise?.resolve(graphDf);
-                  return graphDf;
-                } else {
-                  const logsDf = getLogsDataFrame(histogramResponse.hits, target, this.streamFields, this.timestampColumn);
-                  currentCache.promise?.resolve(logsDf);
-                  return logsDf;
-                }
-              });
-            }
-          })
-          .catch((error) => {
-            console.error('Partition or histogram request failed:', error);
-            // Fallback to empty data
-            const mode = target.displayMode || 'auto';
-            if(mode === 'graph' || target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)){
-              const graphDf = getGraphDataFrame([], target, options.app, this.timestampColumn);
-              currentCache.promise?.resolve(graphDf);
-              return graphDf;
-            } else {
-              const logsDf = getLogsDataFrame([], target, this.streamFields, this.timestampColumn);
-              currentCache.promise?.resolve(logsDf);
-              return logsDf;
-            }
-          });
-      }
-
-      // For logs, continue using doRequest
-      return this.doRequest(target, reqData)
-        .then((response) => {
-          const logsDataFrame = getLogsDataFrame(response.hits, target, this.streamFields, this.timestampColumn);
-          currentCache.promise?.resolve(logsDataFrame);
-          return logsDataFrame;
-        })
-        .catch((err) => {
-          currentCache.promise?.reject(err);
-          let error = {
-            message: '',
-            detail: '',
-          };
-          if (err.data) {
-            error.message = err.data?.message;
-            error.detail = err.data?.error_detail;
-          } else {
-            error.message = err.statusText;
-          }
-
-          const customMessage = logsErrorMessage(err.data.code);
-          if (customMessage) {
-            error.message = customMessage;
-          }
-          throw new Error(error.message + (error.detail ? ` ( ${error.detail} ) ` : ''));
-        })
-        .finally(() => {
-          currentCache.isFetching = false;
-        });
+      return this.processSingleQuery(target, timestamps, options);
     });
 
     return Promise.all(promises).then((data) => {
       return { data: data || [] };
     });
+  }
+
+  /**
+   * Processes a single query target with caching, query type detection, and appropriate routing
+   * Handles histogram queries, volume queries, dashboard queries, and regular logs queries
+   */
+  private processSingleQuery(target: MyQuery, timestamps: any, options: DataQueryRequest<MyQuery>): Promise<any> {
+    const isHistogramQuery = target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME);
+    let reqData = buildQuery(target, timestamps, this.streamFields, options.app, this.timestampColumn);
+
+    // Handle histogram query data preparation
+    if (!target.refId?.includes(REF_ID_STARTER_LOG_VOLUME)) {
+      this.histogramQuery = reqData;
+    } else if (target.refId?.includes(REF_ID_STARTER_LOG_VOLUME) && this.histogramQuery) {
+      reqData = this.histogramQuery;
+      reqData.query.sql_mode = 'context';
+      delete reqData.query.size;
+    }
+
+    // Handle cache management
+    const { currentCache, shouldUseCachedData } = this.handleCacheManagement(target, reqData, options, isHistogramQuery);
+
+    if (shouldUseCachedData) {
+      return this.processCachedDataResponse(target, options, currentCache.data);
+    }
+
+    // Route to appropriate query processor based on context
+    if (target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME) || options.app === 'panel-editor' || options.app === 'dashboard') {
+      return this.processVolumeOrDashboardQuery(target, reqData, options, currentCache);
+    }
+
+    // Process regular logs queries
+    return this.processLogsQuery(target, reqData, currentCache);
   }
 
   doRequest(target: any, data: any) {
@@ -319,6 +173,202 @@ export class DataSource
     };
   }
 
+  /**
+   * Handles cache lookup and initialization for query requests
+   * Returns the cached data if available, otherwise sets up a new cache entry
+   */
+  private handleCacheManagement(target: MyQuery, reqData: any, options: DataQueryRequest<MyQuery>, isHistogramQuery: boolean): { currentCache: CachedQuery, shouldUseCachedData: boolean } {
+    let currentCache = isHistogramQuery ? this.cachedHistogramQuery : this.cachedLogsQuery;
+
+    const cacheKey = JSON.stringify({
+      reqData,
+      displayMode: target.displayMode ?? 'auto',
+      type: target.refId,
+    });
+
+    // Check if we have cached data for this query
+    if (cacheKey === currentCache.requestQuery && currentCache.data) {
+      return { currentCache, shouldUseCachedData: true };
+    }
+
+    // Reset appropriate cache and set up new promise
+    if (target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)) {
+      this.resetHistogramQueryCache();
+    } else {
+      this.resetLogsQueryCache();
+    }
+
+    currentCache = isHistogramQuery ? this.cachedHistogramQuery : this.cachedLogsQuery;
+
+    currentCache.data = new Promise((resolve, reject) => {
+      currentCache.promise = { resolve, reject };
+    });
+
+    currentCache.requestQuery = cacheKey;
+    currentCache.isFetching = true;
+
+    return { currentCache, shouldUseCachedData: false };
+  }
+
+  /**
+   * Processes cached data response based on query type and display mode
+   * Returns the appropriate data frame for the query context
+   */
+  private processCachedDataResponse(target: MyQuery, options: DataQueryRequest<MyQuery>, cachedData: any): any {
+    return cachedData?.then((res: any) => {
+      const mode = target.displayMode || 'auto';
+      if (target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)) {
+        return res;
+      }
+      if (options.app === 'panel-editor' || options.app === 'dashboard') {
+        if (mode === 'graph' || mode === 'auto') {
+          return res;
+        }
+      }
+      return res;
+    });
+  }
+
+  /**
+   * Creates appropriate data frame based on display mode and query type
+   * Returns either graph or logs data frame with proper caching
+   */
+  private createDataFrame(hits: any[], target: MyQuery, options: DataQueryRequest<MyQuery>, currentCache: CachedQuery): any {
+    const mode = target.displayMode || 'auto';
+
+    if (mode === 'graph' || target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)) {
+      const graphDf = getGraphDataFrame(hits, target, options.app, this.histogramTimestampColumn);
+      currentCache.promise?.resolve(graphDf);
+      return graphDf;
+    } else {
+      const logsDf = getLogsDataFrame(hits, target, this.streamFields, this.timestampColumn);
+      currentCache.promise?.resolve(logsDf);
+      return logsDf;
+    }
+  }
+
+  /**
+   * Handles error scenarios and creates appropriate empty data frames
+   * Resolves the cache promise with empty data and returns the data frame
+   */
+  private handleQueryError(target: MyQuery, options: DataQueryRequest<MyQuery>, currentCache: CachedQuery, error?: any, timestampColumn?: string): any {
+    if (error) {
+      console.error('Partition or histogram request failed:', error);
+    }
+
+    const mode = target.displayMode || 'auto';
+    if (mode === 'graph' || target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)) {
+      const graphDf = getGraphDataFrame([], target, options.app, this.histogramTimestampColumn);
+      currentCache.promise?.resolve(graphDf);
+      return graphDf;
+    } else {
+      const logsDf = getLogsDataFrame([], target, this.streamFields, this.timestampColumn);
+      currentCache.promise?.resolve(logsDf);
+      return logsDf;
+    }
+  }
+
+  /**
+   * Processes partition response and executes histogram requests for each partition
+   * Combines results from multiple partitions into a single response
+   */
+  private processPartitionResponse(target: MyQuery, reqData: any, options: DataQueryRequest<MyQuery>, currentCache: CachedQuery, partitionResponse: any): Promise<any> {
+    // Check if partitions are available
+    if (partitionResponse?.partitions?.length > 0) {
+      const partitions = partitionResponse.partitions;
+
+      // Handle non-histogram eligible queries
+      if (!partitionResponse.is_histogram_eligible) {
+        return Promise.resolve(this.createDataFrame([], target, options, currentCache));
+      }
+
+      // Create histogram requests for each partition
+      const histogramPromises = partitions.map((partition: any) => {
+        const partitionHistogramQuery = {
+          ...reqData,
+          query: {
+            ...reqData.query,
+            start_time: partition[0],
+            end_time: partition[1],
+            histogram_interval: partitionResponse.histogram_interval,
+          },
+        };
+
+        return this.doHistogramRequest(target, partitionHistogramQuery);
+      });
+
+      // Combine results from all partitions
+      return Promise.all(histogramPromises).then((histogramResponses) => {
+        const combinedHits = histogramResponses.reduce((acc, response) => {
+          return acc.concat(response.hits || []);
+        }, []);
+
+        return this.createDataFrame(combinedHits, target, options, currentCache);
+      });
+    } else {
+      // Fallback to direct histogram request if no partitions
+      return this.doHistogramRequest(target, reqData).then((histogramResponse) => {
+        return this.createDataFrame(histogramResponse.hits, target, options, currentCache);
+      });
+    }
+  }
+
+  /**
+   * Handles volume, panel-editor, or dashboard queries using partition + histogram flow
+   * Manages the complete partition-based query process including error handling
+   */
+  private processVolumeOrDashboardQuery(target: MyQuery, reqData: any, options: DataQueryRequest<MyQuery>, currentCache: CachedQuery): Promise<any> {
+    // Remove size parameter for partition queries
+    if (reqData.query && reqData.query.hasOwnProperty('size')) {
+      delete reqData.query.size;
+    }
+
+    return this.doPartitionRequest(target, reqData.query)
+      .then((partitionResponse) => {
+        return this.processPartitionResponse(target, reqData, options, currentCache, partitionResponse);
+      })
+      .catch((error) => {
+        return this.handleQueryError(target, options, currentCache, error, this.timestampColumn);
+      });
+  }
+
+  /**
+   * Processes regular logs queries using the standard doRequest flow
+   * Handles response processing and error scenarios for logs queries
+   */
+  private processLogsQuery(target: MyQuery, reqData: any, currentCache: CachedQuery): Promise<any> {
+    return this.doRequest(target, reqData)
+      .then((response) => {
+        const logsDataFrame = getLogsDataFrame(response.hits, target, this.streamFields, this.timestampColumn);
+        currentCache.promise?.resolve(logsDataFrame);
+        return logsDataFrame;
+      })
+      .catch((err) => {
+        currentCache.promise?.reject(err);
+        let error = {
+          message: '',
+          detail: '',
+        };
+
+        if (err.data) {
+          error.message = err.data?.message;
+          error.detail = err.data?.error_detail;
+        } else {
+          error.message = err.statusText;
+        }
+
+        const customMessage = logsErrorMessage(err.data.code);
+        if (customMessage) {
+          error.message = customMessage;
+        }
+
+        throw new Error(error.message + (error.detail ? ` ( ${error.detail} ) ` : ''));
+      })
+      .finally(() => {
+        currentCache.isFetching = false;
+      });
+  }
+
   async testDatasource() {
     return getOrganizations({ url: this.url })
       .then((res) => {
@@ -373,8 +423,6 @@ export class DataSource
     if (!this.getSupportedSupplementaryQueryTypes().includes(type)) {
       return undefined;
     }
-    // console.log('type', type);
-    // console.log('request', request);
 
     switch (type) {
       case SupplementaryQueryType.LogsVolume:
