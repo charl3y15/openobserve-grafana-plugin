@@ -2,7 +2,7 @@ version: '3.0'
 
 services:
   grafana:
-    container_name: 'zinclabs-openobserve'
+    container_name: 'openobserve'
     build:
       context: ./.config
       args:
@@ -10,5 +10,5 @@ services:
     ports:
       - 3000:3000/tcp
     volumes:
-      - ./dist:/var/lib/grafana/plugins/zinclabs-openobserve
+      - ./dist:/var/lib/grafana/plugins/openobserve
       - ./provisioning:/etc/grafana/provisioning
