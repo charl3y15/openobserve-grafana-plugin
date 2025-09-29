@@ -36,7 +36,6 @@ jest.mock('rxjs', () => {
 });
 
 jest.mock('@grafana/runtime', () => ({
-  ...jest.requireActual('@grafana/runtime'),
   getBackendSrv: () => {
     return {
       post: jest.fn().mockResolvedValue({
@@ -57,7 +56,7 @@ jest.mock('@grafana/runtime', () => ({
             kubernetes_namespace_name: 'ingress-nginx',
             kubernetes_pod_id: '109d2bd2-53d0-4e58-9588-69563e6891ef',
             kubernetes_pod_name: 'ingress-nginx-controller-6f7bd4bcfb-8dslk',
-            log: '18.236.103.156 - root@example.com [16/May/2023:06:48:12 +0000] "POST /api/production_n230k19AUNT56m0/default/_json HTTP/2.0" 200 86 "-" "Fluent-Bit" 44501 0.008 [ziox-alpha1-zo1-zincobserve-router-5080] [] 10.24.0.213:5080 102 0.008 200 f0455fd5afbee4926c34606fd33a30f9',
+            log: '18.236.103.156 - root@example.com [16/May/2023:06:48:12 +0000] "POST /api/production_n230k19AUNT56m0/default/_json HTTP/2.0" 200 86 "-" "Fluent-Bit" 44501 0.008 [ziox-alpha1-zo1-openobserve-router-5080] [] 10.24.0.213:5080 102 0.008 200 f0455fd5afbee4926c34606fd33a30f9',
             stream: 'stdout',
             time: '2023-05-16T06:48:12.352167318Z',
           },
@@ -66,6 +65,9 @@ jest.mock('@grafana/runtime', () => ({
     };
   },
   reportInteraction: jest.fn(),
+  getTemplateSrv: () => ({
+    replace: jest.fn((str) => str),
+  }),
 }));
 
 describe('DataSource', () => {
@@ -73,11 +75,11 @@ describe('DataSource', () => {
     id: 2,
     uid: 'fd886f75-fdd9-444b-8868-be92687ff464',
     type: 'zinc-grafanatest-datasource',
-    name: 'ZincObserve',
+    name: 'OpenObserve',
     meta: {
       id: 'zinc-grafanatest-datasource',
       type: 'datasource' as PluginType,
-      name: 'ZincObserve',
+      name: 'OpenObserve',
       info: {
         author: {
           name: 'Zinc',
@@ -98,6 +100,9 @@ describe('DataSource', () => {
         grafanaDependency: '^9.3.8',
         grafanaVersion: '*',
         plugins: [],
+        extensions: {
+          exposedComponents: [],
+        }
       },
       includes: undefined,
       category: '',
@@ -134,7 +139,7 @@ describe('DataSource', () => {
 
       expect(result).toEqual({
         status: 'error',
-        message: 'Unable to connect ZincObserve . Verify that ZincObserve is correctly configured',
+        message: 'Unable to connect OpenObserve . Verify that OpenObserve is correctly configured',
       });
     });
   });

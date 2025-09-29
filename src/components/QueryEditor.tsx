@@ -20,8 +20,6 @@ export const QueryEditor = ({ query, onChange, onRunQuery, datasource, app, data
   const [displayOptions, setDisplayOptions]: any = useState([]);
 
 
-  const isInDashboard = useMemo(() => app === 'panel-editor', [app]);
-
   const getTimeStampColumnName = () => {
     return datasource.instanceSettings?.jsonData?.timestamp_column || '_timestamp';
   };
@@ -41,6 +39,8 @@ export const QueryEditor = ({ query, onChange, onRunQuery, datasource, app, data
       { label: 'Force Logs', value: 'logs' },
     ]);
   }, []);
+  
+  const isInDashboard = useMemo(() => app === 'panel-editor', [app]);
 
   useEffect(() => {
     startLoading();

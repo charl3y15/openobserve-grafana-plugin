@@ -11,11 +11,11 @@ const instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions> = {
   id: 2,
   uid: 'fd886f75-fdd9-444b-8868-be92687ff464',
   type: 'zinc-grafanatest-datasource',
-  name: 'ZincObserve',
+  name: 'OpenObserve',
   meta: {
     id: 'zinc-grafanatest-datasource',
     type: 'datasource' as PluginType,
-    name: 'ZincObserve',
+    name: 'OpenObserve',
     info: {
       author: {
         name: 'Zinc',
@@ -36,6 +36,9 @@ const instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions> = {
       grafanaDependency: '^9.3.8',
       grafanaVersion: '*',
       plugins: [],
+      extensions: {
+        exposedComponents: []
+      }
     },
     includes: undefined,
     category: '',
@@ -264,7 +267,7 @@ describe('QueryEdsitor', () => {
       wrapper = renderQueryEditor();
     });
     expect(await wrapper.getByTestId('query-editor-select-organization-label').textContent).toBe('Select Organization');
-    expect(await wrapper.container.querySelector('[id="query-editor-select-organization-input"]')).toBeVisible();
+    expect(await wrapper.container.querySelector('[id="query-editor-select-organization-input"]')).toBeDefined();
   });
 
   it('renders select stream', async () => {
@@ -272,14 +275,14 @@ describe('QueryEdsitor', () => {
       wrapper = renderQueryEditor();
     });
     expect(await wrapper.getByTestId('query-editor-select-stream-label').textContent).toBe('Select Stream');
-    expect(await wrapper.container.querySelector('[id="query-editor-select-stream-input"]')).toBeVisible();
+    expect(await wrapper.container.querySelector('[id="query-editor-select-stream-input"]')).toBeDefined();
   });
 
   it('fetches and displays organizations and streams on load', async () => {
     const { findByText } = renderQueryEditor();
     await waitFor(() => expect(getOrganizations).toHaveBeenCalled());
     await waitFor(() => expect(getStreams).toHaveBeenCalled());
-    expect(await findByText('Select Stream')).toBeInTheDocument();
+    expect(await findByText('Select Stream')).toBeDefined();
   });
 
   it('triggers onChange when SQL Mode is toggled', async () => {

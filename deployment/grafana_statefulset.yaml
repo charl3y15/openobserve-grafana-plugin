@@ -4,7 +4,7 @@ metadata:
   name: letsencrypt-prod
 spec:
   acme:
-    email: admin@zinclabs.io
+    email: admin@openobserve.io
     privateKeySecretRef:
       name: letsencrypt-prod
     server: https://acme-v02.api.letsencrypt.org/directory
@@ -33,7 +33,7 @@ spec:
         runAsUser: 10000
         runAsGroup: 3000
       initContainers:
-        - name: zincobserve-plugin-loader
+        - name: openobserve-plugin-loader
           image: wbitt/network-multitool
           imagePullPolicy: IfNotPresent
           command:
@@ -105,10 +105,10 @@ metadata:
   annotations:
     cert-manager.io/issuer: letsencrypt-prod
     kubernetes.io/ingress.class: nginx
-  name: g2.gke.zinclabs.dev
+  name: g2.gke.openobserve.dev
 spec:
   rules:
-    - host: g2.gke.zinclabs.dev
+    - host: g2.gke.openobserve.dev
       http:
         paths:
           - pathType: Prefix
@@ -120,5 +120,5 @@ spec:
             path: /
   tls:
     - hosts:
-        - g2.gke.zinclabs.dev
-      secretName: g2.gke.zinclabs.dev
+        - g2.gke.openobserve.dev
+      secretName: g2.gke.openobserve.dev
