@@ -41,14 +41,6 @@ export const getGraphDataFrame = (data: any, target: MyQuery, app: string, times
 
   let fields = ['zo_sql_key', 'zo_sql_num'];
 
-  // if (app !== 'explore') {
-  //   const columns = getColumnsFromQuery(target.query);
-
-  //   if (columns.length) {
-  //     fields = columns;
-  //   }
-  // }
-
   for (let i = 0; i < fields.length; i++) {
     if (isTimeField(fields[i], timestampColumn)) {
       graphData.addField({
@@ -110,44 +102,4 @@ export const getDefaultDataFrame = (refId: string, visualisationType: PreferredV
     },
     fields: [],
   });
-};
-
-const getColumnsFromQuery = (query: string) => {
-  // Regular expression pattern to find the select column statements with optional alias
-  let pattern = /\bselect\b(.+?)\bfrom\b/i;
-
-  // Get the selected columns
-  let match = pattern.exec(query);
-
-  // If there's no select statement, return an empty list
-  if (!match) {
-    return [];
-  }
-
-  // Split the selected columns by comma, then trim extra whitespace
-  let selectedColumns = match[1].split(',').map(function (column) {
-    return column.trim();
-  });
-
-  // Prepare array to store final column names or aliases
-  let columnNames: any = [];
-
-  // Iterate over selected columns
-  selectedColumns.forEach(function (column) {
-    // Regular expression pattern to find alias
-    let aliasPattern = /\s+as\s+(.+)$/i;
-
-    // Get the alias
-    let aliasMatch = aliasPattern.exec(column);
-
-    // If alias exists, use that, otherwise use column name
-    if (aliasMatch) {
-      // SQL alias may have quotes, strip those.
-      let stripped = aliasMatch[1].replace(/^['"]|['"]$/g, '');
-      columnNames.push(stripped);
-    } else {
-      columnNames.push(column);
-    }
-  });
-  return columnNames;
 };

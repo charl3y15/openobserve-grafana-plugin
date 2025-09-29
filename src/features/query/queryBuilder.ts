@@ -1,5 +1,4 @@
 import { MyQuery, TimeRange } from 'types';
-import { b64EncodeUnicode } from 'utils/zincutils';
 
 export const buildQuery = (
   queryData: MyQuery,
