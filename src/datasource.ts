@@ -6,6 +6,7 @@ import {
   QueryFixAction,
   DataSourceWithSupplementaryQueriesSupport,
   SupplementaryQueryType,
+  SupplementaryQueryOptions,
   LogLevel,
 } from '@grafana/data';
 import { Observable } from 'rxjs';
@@ -437,7 +438,7 @@ export class DataSource
     // return [SupplementaryQueryType.LogsVolume, SupplementaryQueryType.LogsSample];
   }
 
-  getSupplementaryQuery(type: SupplementaryQueryType, query: MyQuery): MyQuery | undefined {
+  getSupplementaryQuery(options: SupplementaryQueryOptions, originalQuery: MyQuery): MyQuery | undefined {
     return undefined;
   }
 

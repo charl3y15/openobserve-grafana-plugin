@@ -36,7 +36,6 @@ jest.mock('rxjs', () => {
 });
 
 jest.mock('@grafana/runtime', () => ({
-  ...jest.requireActual('@grafana/runtime'),
   getBackendSrv: () => {
     return {
       post: jest.fn().mockResolvedValue({
@@ -66,6 +65,9 @@ jest.mock('@grafana/runtime', () => ({
     };
   },
   reportInteraction: jest.fn(),
+  getTemplateSrv: () => ({
+    replace: jest.fn((str) => str),
+  }),
 }));
 
 describe('DataSource', () => {
@@ -98,6 +100,9 @@ describe('DataSource', () => {
         grafanaDependency: '^9.3.8',
         grafanaVersion: '*',
         plugins: [],
+        extensions: {
+          exposedComponents: [],
+        }
       },
       includes: undefined,
       category: '',
