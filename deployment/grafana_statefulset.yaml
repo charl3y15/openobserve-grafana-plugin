@@ -33,7 +33,7 @@ spec:
         runAsUser: 10000
         runAsGroup: 3000
       initContainers:
-        - name: zincobserve-plugin-loader
+        - name: openobserve-plugin-loader
           image: wbitt/network-multitool
           imagePullPolicy: IfNotPresent
           command:
