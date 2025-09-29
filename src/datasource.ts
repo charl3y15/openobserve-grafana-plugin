@@ -237,7 +237,7 @@ export class DataSource
   private createDataFrame(hits: any[], target: MyQuery, options: DataQueryRequest<MyQuery>, currentCache: CachedQuery): any {
     const mode = target.displayMode || 'auto';
 
-    if (mode === 'graph' || target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)) {
+    if (mode === 'graph' || target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME) || options.app === 'panel-editor' || options.app === 'dashboard') {
       const graphDf = getGraphDataFrame(hits, target, options.app, this.histogramTimestampColumn);
       currentCache.promise?.resolve(graphDf);
       return graphDf;
@@ -258,7 +258,7 @@ export class DataSource
     }
 
     const mode = target.displayMode || 'auto';
-    if (mode === 'graph' || target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME)) {
+    if (mode === 'graph' || target?.refId?.includes(REF_ID_STARTER_LOG_VOLUME) || options.app === 'panel-editor' || options.app === 'dashboard') {
       const graphDf = getGraphDataFrame([], target, options.app, this.histogramTimestampColumn);
       currentCache.promise?.resolve(graphDf);
       return graphDf;
