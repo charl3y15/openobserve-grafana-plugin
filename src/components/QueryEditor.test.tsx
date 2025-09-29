@@ -21,7 +21,7 @@ const instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions> = {
         name: 'Zinc',
         url: '',
       },
-      description: 'Zinc observe',
+      description: 'OpenObserve',
       links: [],
       logos: {
         small: 'public/plugins/zinc-grafanatest-datasource/img/logo.png',

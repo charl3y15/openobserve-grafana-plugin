@@ -82,10 +82,10 @@ describe('DataSource', () => {
       name: 'OpenObserve',
       info: {
         author: {
-          name: 'Zinc',
+          name: 'OpenObserve',
           url: '',
         },
-        description: 'Zinc observe',
+        description: 'OpenObserve',
         links: [],
         logos: {
           small: 'public/plugins/zinc-grafanatest-datasource/img/logo.png',
