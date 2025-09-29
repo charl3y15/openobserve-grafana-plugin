@@ -11,11 +11,11 @@ const instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions> = {
   id: 2,
   uid: 'fd886f75-fdd9-444b-8868-be92687ff464',
   type: 'zinc-grafanatest-datasource',
-  name: 'ZincObserve',
+  name: 'OpenObserve',
   meta: {
     id: 'zinc-grafanatest-datasource',
     type: 'datasource' as PluginType,
-    name: 'ZincObserve',
+    name: 'OpenObserve',
     info: {
       author: {
         name: 'Zinc',

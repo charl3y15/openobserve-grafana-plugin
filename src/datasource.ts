@@ -382,7 +382,7 @@ export class DataSource
         const infoInParentheses = info !== '' ? ` (${info})` : '';
         return {
           status: 'error',
-          message: `Unable to connect ZincObserve ${infoInParentheses}. Verify that ZincObserve is correctly configured`,
+          message: `Unable to connect OpenObserve ${infoInParentheses}. Verify that OpenObserve is correctly configured`,
         };
       });
   }
