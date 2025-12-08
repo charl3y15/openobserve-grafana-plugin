@@ -142,14 +142,16 @@ export class DataSource
     });
   }
 
-  doHistogramRequest(target: any, data: any) {
-    const searchType = 'ui';
+  doHistogramRequest(target: any, data: any, app = 'logs') {
+    const isDashboardRequest =  app === 'panel-editor' ||  app === 'dashboard';
+
+    const searchType = isDashboardRequest ? 'dashboards' : 'ui';
     const useCache = true;
     const pageType = 'logs';
 
     const url =
       this.url +
-      `/api/${target.organization}/_search?type=${pageType}&search_type=${searchType}&use_cache=${useCache}&is_ui_histogram=true`;
+      `/api/${target.organization}/_search?type=${pageType}&search_type=${searchType}&use_cache=${useCache}&is_ui_histogram=${!isDashboardRequest}`;
 
     return getBackendSrv().post(url, data, {
       showErrorAlert: false,
@@ -295,7 +297,7 @@ export class DataSource
           },
         };
 
-        return this.doHistogramRequest(target, partitionHistogramQuery);
+        return this.doHistogramRequest(target, partitionHistogramQuery, options.app);
       });
 
       // Combine results from all partitions
