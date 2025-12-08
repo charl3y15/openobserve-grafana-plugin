@@ -1,4 +1,4 @@
-import { FieldType, MutableDataFrame, PreferredVisualisationType } from '@grafana/data';
+import { FieldType, DataFrame, Field } from '@grafana/data';
 import { MyQuery } from '../../types';
 import { convertTimeToMs, getFieldType } from '../../utils/zincutils';
 
@@ -115,79 +115,116 @@ export const getLogsDataFrame = (
   target: MyQuery,
   streamFields: any = [],
   timestampColumn = '_timestamp'
-) => {
-  const logsData = getDefaultDataFrame(target.refId, 'logs');
+): DataFrame => {
+  // Build fields array
+  const fields: Field[] = [
+    {
+      name: 'Time',
+      type: FieldType.time,
+      config: {},
+      values: [],
+    },
+    {
+      name: 'Content',
+      type: FieldType.string,
+      config: {},
+      values: [],
+    },
+  ];
 
-  logsData.addField({
-    name: 'Time',
-    type: FieldType.time,
-  });
-  logsData.addField({
-    name: 'Content',
-    type: FieldType.string,
-  });
-
+  // Add stream fields
   streamFields.forEach((field: any) => {
-    logsData.addField({
+    fields.push({
       name: field.name,
       type: getFieldType(field.type),
+      config: {},
+      values: [],
     });
   });
 
+  // Populate field values
   data.forEach((log: any) => {
-    logsData.add({ ...log, Content: JSON.stringify(log), Time: convertTimeToMs(log[timestampColumn]) });
+    fields[0].values.push(convertTimeToMs(log[timestampColumn])); // Time
+    fields[1].values.push(JSON.stringify(log)); // Content
+
+    // Add stream field values
+    streamFields.forEach((field: any, index: number) => {
+      fields[index + 2].values.push(log[field.name]);
+    });
   });
 
-  return logsData;
+  return {
+    refId: target.refId,
+    meta: {
+      preferredVisualisationType: 'logs',
+    },
+    fields,
+    length: data.length,
+  };
 };
 
-export const getGraphDataFrame = (data: any, target: MyQuery, app: string, timestampColumn = '_timestamp') => {
-  const graphData = getDefaultDataFrame(target.refId, 'graph');
-
+export const getGraphDataFrame = (
+  data: any,
+  target: MyQuery,
+  app: string,
+  timestampColumn = '_timestamp'
+): DataFrame => {
   // Get actual fields from response data instead of hardcoding
-  let fields = data.length > 0 ? getFieldsFromData(data) : [];
+  let fieldNames = data.length > 0 ? getFieldsFromData(data) : [];
 
   // Detect which field is the timestamp by checking values
   const detectedTimeField = detectTimestampField(data);
   const timeFieldName = detectedTimeField || timestampColumn;
 
   // If no data, use default fields for empty state
-  if (!fields.length) {
-    fields = ['zo_sql_key', 'zo_sql_num', 'x_axis_1'];
+  if (!fieldNames.length) {
+    fieldNames = ['zo_sql_key', 'zo_sql_num', 'x_axis_1'];
   }
 
-  // Add fields to dataframe
-  for (let i = 0; i < fields.length; i++) {
-    const fieldName = fields[i];
+  // Build fields array
+  const fields: Field[] = [];
+
+  for (let i = 0; i < fieldNames.length; i++) {
+    const fieldName = fieldNames[i];
     const isTime = fieldName === timeFieldName;
 
     if (isTime) {
-      graphData.addField({
-        config: {
-          filterable: true,
-        },
+      fields.push({
         name: 'Time',
         type: FieldType.time,
+        config: { filterable: true },
+        values: [],
       });
     } else {
       // Infer type from first row value
       const fieldType = data.length > 0 ? inferFieldType(data[0][fieldName]) : FieldType.number;
-      graphData.addField({
+      fields.push({
         name: fieldName,
         type: fieldType,
+        config: {},
+        values: [],
       });
     }
   }
 
-  if (!data.length) {
-    return graphData;
-  }
-
+  // Populate field values
   data.forEach((log: any) => {
-    graphData.add(getField(log, fields, timeFieldName));
+    const processedRow = getField(log, fieldNames, timeFieldName);
+
+    fields.forEach((field) => {
+      const fieldName = field.name === 'Time' ? 'Time' : field.name;
+      field.values.push(processedRow[fieldName]);
+    });
   });
 
-  return graphData;
+  return {
+    refId: target.refId,
+    meta: {
+      preferredVisualisationType: 'graph',
+    },
+    fields,
+    length: data.length,
+  };
 };
 
 const getField = (log: any, columns: any, timestampColumn: string) => {
@@ -207,14 +244,4 @@ const getField = (log: any, columns: any, timestampColumn: string) => {
   }
 
   return field;
-};
-
-export const getDefaultDataFrame = (refId: string, visualisationType: PreferredVisualisationType = 'logs') => {
-  return new MutableDataFrame({
-    refId: refId,
-    meta: {
-      preferredVisualisationType: visualisationType,
-    },
-    fields: [],
-  });
 };
