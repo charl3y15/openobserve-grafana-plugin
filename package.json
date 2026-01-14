@@ -19,7 +19,7 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@babel/core": "^7.21.4",
-    "@grafana/e2e": "9.3.8",
+    "@grafana/e2e": "9.5.21",
     "@grafana/e2e-selectors": "9.3.8",
     "@grafana/eslint-config": "^6.0.0",
     "@grafana/tsconfig": "^1.2.0-rc1",
@@ -37,7 +37,7 @@
     "css-loader": "^7.1.2",
     "eslint-webpack-plugin": "^4.0.1",
     "fork-ts-checker-webpack-plugin": "^8.0.0",
-    "glob": "^10.2.7",
+    "glob": "^10.5.0",
     "identity-obj-proxy": "3.0.0",
     "jest": "^30.2.0",
     "jest-environment-jsdom": "^30.2.0",
