@@ -45,7 +45,7 @@ Grafana supports a wide range of data sources, including Prometheus, MySQL, and 
    npm run server
    ```
 
-6. Run the E2E tests (using Cypress)
+6. Run the E2E tests (using Playwright)
 
    ```bash
    # Spins up a Grafana instance first that we tests against
