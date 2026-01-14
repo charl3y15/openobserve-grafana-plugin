@@ -2,35 +2,20 @@
 
 version: 2
 updates:
-  # Enable version updates for pip
-  - package-ecosystem: "pip"
-    directory: "/"
+  # Added update for Node.js (npm)
+  - package-ecosystem: 'npm'
+    directory: '/'
     schedule:
-      interval: "daily"
-    commit-message:
-      prefix: "pip prod"
-      prefix-development: "pip dev"
-    labels:
-      - "dependencies"
-      - "automated"
-      - "pip"
+      interval: 'weekly'
 
   # Enable version updates for Docker
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
-    labels:
-      - "dependencies"
-      - "automated"
-      - "docker"
 
   # Enable version updates for GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-    labels:
-      - "dependencies"
-      - "automated"
-      - "github-actions"
