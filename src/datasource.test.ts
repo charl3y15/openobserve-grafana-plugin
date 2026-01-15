@@ -287,7 +287,7 @@ describe('DataSource', () => {
       result = await ds.query(options);
     });
     it('should call doRequest', () => {
-      expect(doRequest).toBeCalledTimes(1);
+      expect(doRequest).toHaveBeenCalledTimes(1);
     });
     it('should return DataFrame', () => {
       expect(result.data.length).toBe(1);

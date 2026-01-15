@@ -1,6 +1,6 @@
 import React from 'react';
 import { css } from '@emotion/css';
-import { ReactMonacoEditor, monacoTypes } from '@grafana/ui';
+import { ReactMonacoEditor } from '@grafana/ui';
 
 interface Props {
   query: string;
@@ -14,7 +14,7 @@ interface Props {
 }
 
 export const ZincEditor = ({ query, onChange, getFields, runQuery, isSQLMode, id, timestamp_column }: Props): any => {
-  const options: monacoTypes.editor.IStandaloneEditorConstructionOptions = {
+  const options = {
     wordWrap: 'on',
     lineNumbers: 'on',
     lineNumbersMinChars: 0,
@@ -242,7 +242,7 @@ export const ZincEditor = ({ query, onChange, getFields, runQuery, isSQLMode, id
   return (
     <ReactMonacoEditor
       data-testid="zinc-editor-react-monaco-editor"
-      options={options}
+      options={options as any}
       onMount={onEditorMount}
       value={query}
       language="sql"
